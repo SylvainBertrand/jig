@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.eggs/
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# C++ build
+build/
+cmake-build-*/
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# MuJoCo
+*.mjb
+
+# ROS 2
+log/
+install/
