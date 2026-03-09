@@ -4,13 +4,18 @@ version = "0.1.0"
 description = "Next-gen desktop GUI for robotics engineers"
 requires-python = ">=3.12, <3.14"
 dependencies = [
-    "PySide6",
-    "pyqtgraph",
-    "mujoco",
-    "mcap",
-    "numpy",
-    "Pillow",
+    "PySide6>=6.6",
+    "pyqtgraph>=0.13",
+    "mujoco>=3.0",
+    "mcap>=1.1",
+    "numpy>=1.24",
+    "Pillow>=10.0",
 ]
 
 [project.scripts]
-jig-spike = "jig_spike_qt.main:main"
+jig = "jig.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
