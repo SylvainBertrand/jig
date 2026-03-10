@@ -39,10 +39,19 @@ def build_layout_state(
     timeline_time: float,
     timeline_range: tuple[float, float],
     sessions: list[dict[str, Any]],
+    dock_state: str | None = None,
 ) -> dict[str, Any]:
-    """Build a layout dict from the current app state."""
-    return {
-        "version": 1,
+    """Build a layout dict from the current app state.
+
+    Args:
+        panels: Per-panel state dicts (type, title, state).
+        timeline_time: Current timeline position.
+        timeline_range: (t_min, t_max) data extent.
+        sessions: Session descriptors.
+        dock_state: Base64-encoded PyQtAds dock geometry (optional).
+    """
+    result: dict[str, Any] = {
+        "version": 2,
         "timeline": {
             "current_time": timeline_time,
             "range": list(timeline_range),
@@ -50,3 +59,6 @@ def build_layout_state(
         "sessions": sessions,
         "panels": panels,
     }
+    if dock_state is not None:
+        result["dock_state"] = dock_state
+    return result

@@ -31,15 +31,11 @@ class JigWindow(QMainWindow):
         self.setWindowTitle("Jig")
         self.resize(1400, 900)
 
-        # Minimal central widget so docks fill all space
-        central = QWidget()
-        central.setMaximumHeight(0)
-        self.setCentralWidget(central)
-
-        # Dock manager
+        # Dock manager (PyQtAds CDockManager becomes the central widget)
         self.dock_manager = DockManager(self, ctx)
+        self.setCentralWidget(self.dock_manager.ads_dock_manager)
 
-        # Topic browser sidebar
+        # Topic browser sidebar (standard QDockWidget, not managed by PyQtAds)
         self._topic_browser = TopicBrowser()
         sidebar_dock = QDockWidget("Topics", self)
         sidebar_dock.setWidget(self._topic_browser)
@@ -49,7 +45,7 @@ class JigWindow(QMainWindow):
         )
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, sidebar_dock)
 
-        # Timeline at bottom
+        # Timeline at bottom (toolbar, not floatable — stays pinned)
         self._timeline_widget = TimelineWidget(ctx.timeline)
         timeline_toolbar = QToolBar("Timeline")
         timeline_toolbar.setMovable(False)

@@ -14,6 +14,23 @@ Jig is a desktop GUI for robotics engineers to intuitively interface with **simu
 - Hardware experiment mode with same GUI as simulation
 - MCAP log loading, ROS 2 native
 
+## Quickstart
+
+```bash
+# Clone and install
+git clone https://github.com/SylvainBertrand/jig.git
+cd jig
+uv sync
+
+# Run with synthetic test data
+uv run jig
+
+# Run with an MCAP log file
+uv run jig path/to/recording.mcap
+```
+
+Once running, use **Panels > Add Chart / Image / 3D Viewer** to open panels. Drag panels to split, tab, or float them. Load signals by dragging from the Topics sidebar into a Chart panel.
+
 ## Tech Stack
 
 | Layer | Technology |
