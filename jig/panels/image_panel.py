@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -12,6 +14,13 @@ from PySide6.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget
 from jig.core.app_context import AppContext
 from jig.panels.base import PanelBase
 from jig.panels.registry import PanelRegistry
+
+try:
+    from PIL import Image as PILImage
+
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
 
 
 @PanelRegistry.register
@@ -39,6 +48,9 @@ class ImagePanel(PanelBase):
         self._info_label = QLabel("")
         self._info_label.setStyleSheet("font-size: 11px; padding: 2px;")
         layout.addWidget(self._info_label)
+
+        # LRU cache for decoded images
+        self._decode_cache = _ImageCache(maxsize=16)
 
         # Auto-select first image topic if data is loaded
         self._refresh_topics()
@@ -76,15 +88,16 @@ class ImagePanel(PanelBase):
         if result is None:
             return
 
-        ts, img = result
-        if not isinstance(img, np.ndarray):
+        ts, raw = result
+        img = self._decode_image(raw)
+        if img is None:
             return
 
         h, w = img.shape[:2]
         ch = img.shape[2] if img.ndim == 3 else 1
         rgb = np.ascontiguousarray(img)
 
-        if ch == 3:
+        if ch >= 3:
             qimg = QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888)
         else:
             qimg = QImage(rgb.data, w, h, w, QImage.Format.Format_Grayscale8)
@@ -97,7 +110,34 @@ class ImagePanel(PanelBase):
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
-        self._info_label.setText(f"t = {ts:.3f} s  |  {w}\u00d7{h}")
+
+        encoding = ""
+        if isinstance(raw, dict):
+            encoding = f"  |  {raw.get('format', raw.get('encoding', ''))}"
+        self._info_label.setText(f"t = {ts:.3f} s  |  {w}\u00d7{h}{encoding}")
+
+    def _decode_image(self, raw: Any) -> np.ndarray | None:
+        """Decode raw image data to numpy array (with caching)."""
+        # Already a numpy array (JSON generator path)
+        if isinstance(raw, np.ndarray):
+            return raw
+
+        # CompressedImage dict: {"format": "jpeg", "data": b"..."}
+        if isinstance(raw, dict) and "data" in raw:
+            data = raw["data"]
+            if isinstance(data, (list, tuple)):
+                data = bytes(data)
+            cache_key = id(data)
+            cached = self._decode_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            img = _decode_compressed(data)
+            if img is not None:
+                self._decode_cache.put(cache_key, img)
+            return img
+
+        return None
 
     # -- PanelBase interface -------------------------------------------------
 
@@ -112,3 +152,44 @@ class ImagePanel(PanelBase):
         if topic:
             self._topic = topic
             self._topic_combo.setCurrentText(topic)
+
+
+# ---------------------------------------------------------------------------
+# Image decoding + cache
+# ---------------------------------------------------------------------------
+
+def _decode_compressed(data: bytes) -> np.ndarray | None:
+    """Decode JPEG/PNG bytes to numpy RGB array."""
+    if not _HAS_PIL:
+        return None
+    try:
+        pil_img = PILImage.open(io.BytesIO(data))
+        pil_img = pil_img.convert("RGB")
+        return np.array(pil_img)
+    except Exception:
+        return None
+
+
+class _ImageCache:
+    """Simple LRU cache for decoded images keyed by object id."""
+
+    def __init__(self, maxsize: int = 16) -> None:
+        self._maxsize = maxsize
+        self._cache: dict[int, np.ndarray] = {}
+        self._order: list[int] = []
+
+    def get(self, key: int) -> np.ndarray | None:
+        if key in self._cache:
+            self._order.remove(key)
+            self._order.append(key)
+            return self._cache[key]
+        return None
+
+    def put(self, key: int, value: np.ndarray) -> None:
+        if key in self._cache:
+            self._order.remove(key)
+        elif len(self._cache) >= self._maxsize:
+            oldest = self._order.pop(0)
+            del self._cache[oldest]
+        self._cache[key] = value
+        self._order.append(key)

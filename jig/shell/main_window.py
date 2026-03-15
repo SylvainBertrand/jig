@@ -5,10 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QMainWindow,
+    QStatusBar,
     QToolBar,
     QWidget,
 )
@@ -53,14 +55,22 @@ class JigWindow(QMainWindow):
         timeline_toolbar.addWidget(self._timeline_widget)
         self.addToolBar(Qt.ToolBarArea.BottomToolBarArea, timeline_toolbar)
 
+        # Status bar
+        self._status_bar = QStatusBar()
+        self.setStatusBar(self._status_bar)
+
         self._build_menu()
+
+        # Ctrl+O shortcut
+        QShortcut(QKeySequence("Ctrl+O"), self, activated=self._open_mcap)
 
     def _build_menu(self) -> None:
         menu_bar = self.menuBar()
 
         # File menu
         file_menu = menu_bar.addMenu("File")
-        file_menu.addAction("Open MCAP...", self._open_mcap)
+        open_action = file_menu.addAction("Open MCAP...", self._open_mcap)
+        open_action.setShortcut(QKeySequence("Ctrl+O"))
         file_menu.addSeparator()
         file_menu.addAction("Quit", self.close)
 
@@ -86,17 +96,21 @@ class JigWindow(QMainWindow):
         session = LogSession(path)
         self.ctx.sessions.append(session)
 
+        self._status_bar.showMessage(f"Loading {path.name}...")
+
         # Wire up data store to topic browser
         self._topic_browser.set_data_store(session.data_store)
 
         # When loading finishes, update the timeline range
         session.loading_finished.connect(self._on_session_loaded)
-        session.error_occurred.connect(lambda msg: print(f"Load error: {msg}"))
+        session.error_occurred.connect(self._on_session_error)
         session.start()
 
     def _on_session_loaded(self) -> None:
-        """Update timeline range from all sessions."""
+        """Update timeline range from all sessions and show summary."""
         t_min, t_max = float("inf"), float("-inf")
+        total_topics = 0
+        total_messages = 0
         for session in self.ctx.sessions:
             ds = session.data_store
             r = ds.time_range
@@ -104,5 +118,30 @@ class JigWindow(QMainWindow):
                 t_min = r[0]
             if r[1] > t_max:
                 t_max = r[1]
+            total_topics += len(ds.topics)
+            total_messages += sum(
+                info.message_count for info in ds.topics.values()
+            )
         if t_min < t_max:
             self.ctx.timeline.set_range(t_min, t_max)
+
+        duration = t_max - t_min if t_max > t_min else 0
+        # Show load summary
+        summary_parts = [
+            f"{total_topics} topics",
+            f"{total_messages:,} messages",
+            f"{duration:.1f}s duration",
+        ]
+        # Include memory from the most recent session
+        for session in reversed(self.ctx.sessions):
+            if hasattr(session, "metrics") and session.metrics:
+                mem = session.metrics.get("memory_current_mb", 0)
+                load_t = session.metrics.get("load_time_s", 0)
+                summary_parts.append(f"{mem:.0f} MB")
+                summary_parts.append(f"loaded in {load_t:.2f}s")
+                break
+
+        self._status_bar.showMessage("Loaded: " + ", ".join(summary_parts))
+
+    def _on_session_error(self, msg: str) -> None:
+        self._status_bar.showMessage(f"Load error: {msg}")

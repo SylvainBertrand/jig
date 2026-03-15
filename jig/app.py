@@ -45,10 +45,10 @@ class JigApp:
         """Convenience: load an MCAP file into a new LogSession."""
         self._window.load_mcap(path)
 
-    def generate_and_load_test_data(self) -> None:
+    def generate_and_load_test_data(self, fmt: str = "json") -> None:
         """Generate synthetic MCAP and load it (for development)."""
         from jig.io.mcap_generator import generate_mcap
 
-        mcap_path = Path(tempfile.gettempdir()) / "jig_test.mcap"
-        generate_mcap(str(mcap_path))
+        mcap_path = Path(tempfile.gettempdir()) / f"jig_test_{fmt}.mcap"
+        generate_mcap(str(mcap_path), fmt=fmt)
         self.load_mcap(mcap_path)

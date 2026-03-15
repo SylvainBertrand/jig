@@ -39,7 +39,7 @@ class TopicBrowser(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._tree = _DragTree()
-        self._tree.setHeaderLabels(["Signal", "Count"])
+        self._tree.setHeaderLabels(["Signal", "Type / Count"])
         self._tree.setColumnWidth(0, 220)
         self._tree.setDragEnabled(True)
         self._tree.setDragDropMode(QTreeWidget.DragDropMode.DragOnly)
@@ -63,9 +63,12 @@ class TopicBrowser(QWidget):
             self._add_topic_item(info)
 
     def _add_topic_item(self, info: TopicInfo) -> None:
-        topic_item = QTreeWidgetItem(
-            [info.name, str(info.message_count)]
-        )
+        # Short type name for display (e.g. "sensor_msgs/msg/JointState" → "JointState")
+        short_type = info.message_type.rsplit("/", 1)[-1] if info.message_type else ""
+        detail = f"{short_type}  ({info.message_count})" if short_type else str(info.message_count)
+
+        topic_item = QTreeWidgetItem([info.name, detail])
+        topic_item.setToolTip(0, info.message_type)
         topic_item.setFlags(topic_item.flags() | Qt.ItemFlag.ItemIsSelectable)
         for field_name in info.fields:
             child = QTreeWidgetItem([field_name, ""])

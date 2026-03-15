@@ -11,12 +11,16 @@ from jig.app import JigApp
 def main() -> None:
     app = JigApp(sys.argv)
 
-    # If an MCAP path was passed as argument, load it
     args = sys.argv[1:]
+
     if args and args[0].endswith(".mcap"):
+        # Load a real MCAP file
         app.load_mcap(Path(args[0]))
+    elif "--ros2" in args:
+        # Generate ROS 2 CDR-encoded test data
+        app.generate_and_load_test_data(fmt="ros2")
     else:
-        # Generate synthetic test data for development
+        # Generate lightweight JSON test data (default)
         app.generate_and_load_test_data()
 
     # Add default panels
