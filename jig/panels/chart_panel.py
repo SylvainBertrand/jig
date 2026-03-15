@@ -83,6 +83,7 @@ class ChartPanel(PanelBase):
         self._plot_items: list = []
         self._colors: list[str] = []
         self._drop_highlight = False
+        self._follow_playback = True  # auto-scroll when cursor hits 80%
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -259,6 +260,12 @@ class ChartPanel(PanelBase):
         menu.addAction("Auto-scale Y Axis", self._auto_scale_y)
         menu.addAction("Reset Zoom", self._reset_zoom)
 
+        menu.addSeparator()
+        follow_action = menu.addAction("Follow playback cursor")
+        follow_action.setCheckable(True)
+        follow_action.setChecked(self._follow_playback)
+        follow_action.toggled.connect(self._set_follow_playback)
+
         menu.exec(self._plot_widget.mapToGlobal(pos))
 
     def _auto_scale_y(self) -> None:
@@ -268,6 +275,9 @@ class ChartPanel(PanelBase):
     def _reset_zoom(self) -> None:
         if HAS_PYQTGRAPH:
             self._plot_widget.enableAutoRange()
+
+    def _set_follow_playback(self, follow: bool) -> None:
+        self._follow_playback = follow
 
     def _open_quick_plot(self) -> None:
         from jig.shell.quick_plot_dialog import QuickPlotDialog
@@ -345,12 +355,17 @@ class ChartPanel(PanelBase):
     def on_time_changed(self, t: float) -> None:
         if not HAS_PYQTGRAPH:
             return
-        t0 = time.perf_counter()
         self._cursor.setValue(t)
-        dt_ms = (time.perf_counter() - t0) * 1000
-        # Don't overwrite the crosshair readout if mouse is over the chart
-        if not self._vline.isVisible():
-            self._status_label.setText(f"Chart update: {dt_ms:.2f} ms")
+
+        # Auto-scroll: when playing and cursor reaches 80% of visible window
+        if self._follow_playback and self.ctx.timeline.playing:
+            vb = self._plot_widget.plotItem.vb
+            x_range = vb.viewRange()[0]
+            view_width = x_range[1] - x_range[0]
+            threshold = x_range[0] + view_width * 0.8
+            if t > threshold:
+                new_start = t - view_width * 0.2
+                vb.setXRange(new_start, new_start + view_width, padding=0)
 
     def get_state(self) -> dict[str, Any]:
         return {

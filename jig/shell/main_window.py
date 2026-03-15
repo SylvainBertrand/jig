@@ -63,6 +63,10 @@ class JigWindow(QMainWindow):
         self._build_menu()
         self._setup_shortcuts()
 
+        # Track playback state in status bar
+        ctx.timeline.playback_changed.connect(self._on_playback_state_changed)
+        ctx.timeline.playback_rate_changed.connect(self._on_playback_rate_changed)
+
     def _build_menu(self) -> None:
         menu_bar = self.menuBar()
 
@@ -82,12 +86,32 @@ class JigWindow(QMainWindow):
             )
 
     def _setup_shortcuts(self) -> None:
+        tl = self.ctx.timeline
+
+        # File
         QShortcut(QKeySequence("Ctrl+O"), self, activated=self._open_mcap)
+
+        # Variable browser
         QShortcut(QKeySequence("Ctrl+F"), self, activated=self._focus_search)
+        QShortcut(QKeySequence("Ctrl+P"), self, activated=self._show_quick_plot_dialog)
+
+        # Playback
+        QShortcut(QKeySequence("Space"), self, activated=tl.toggle_play_pause)
+        QShortcut(QKeySequence("Left"), self, activated=tl.step_backward)
+        QShortcut(QKeySequence("Right"), self, activated=tl.step_forward)
+        QShortcut(QKeySequence("Home"), self, activated=tl.go_to_start)
+        QShortcut(QKeySequence("End"), self, activated=tl.go_to_end)
+        QShortcut(QKeySequence("+"), self, activated=tl.speed_up)
+        QShortcut(QKeySequence("="), self, activated=tl.speed_up)
+        QShortcut(QKeySequence("-"), self, activated=tl.speed_down)
         QShortcut(
-            QKeySequence("Ctrl+P"), self, activated=self._show_quick_plot_dialog
+            QKeySequence("Ctrl+Left"), self,
+            activated=lambda: tl.jump_backward(1.0),
         )
-        QShortcut(QKeySequence("Space"), self, activated=self._toggle_playback)
+        QShortcut(
+            QKeySequence("Ctrl+Right"), self,
+            activated=lambda: tl.jump_forward(1.0),
+        )
 
     # -- File open -----------------------------------------------------------
 
@@ -135,7 +159,16 @@ class JigWindow(QMainWindow):
         if t_min < t_max:
             self.ctx.timeline.set_range(t_min, t_max)
 
+        # Compute a reasonable step size from the highest-rate topic
+        max_count = 0
+        for session in self.ctx.sessions:
+            for info in session.data_store.topics.values():
+                if info.message_count > max_count:
+                    max_count = info.message_count
         duration = t_max - t_min if t_max > t_min else 0
+        if max_count > 1 and duration > 0:
+            self.ctx.timeline.set_step_size(duration / max_count)
+
         summary_parts = [
             f"{total_topics} topics",
             f"{total_messages:,} messages",
@@ -154,6 +187,19 @@ class JigWindow(QMainWindow):
     def _on_session_error(self, msg: str) -> None:
         self._status_bar.showMessage(f"Load error: {msg}")
 
+    # -- Playback status bar -------------------------------------------------
+
+    def _on_playback_state_changed(self, playing: bool) -> None:
+        if playing:
+            rate = self.ctx.timeline.playback_rate
+            self._status_bar.showMessage(f"Playing at {rate}x")
+        else:
+            self._status_bar.showMessage("Paused")
+
+    def _on_playback_rate_changed(self, rate: float) -> None:
+        if self.ctx.timeline.playing:
+            self._status_bar.showMessage(f"Playing at {rate}x")
+
     # -- Signal double-click → plot ------------------------------------------
 
     def _on_signal_double_clicked(self, full_path: str) -> None:
@@ -165,10 +211,8 @@ class JigWindow(QMainWindow):
             return
         ref = SignalRef(topic=parts[0], field=parts[1])
 
-        # Find the focused chart panel
         chart = self._find_focused_chart()
         if chart is None:
-            # Create a new chart and add the signal
             chart = self.dock_manager.add_panel("Chart")
 
         if isinstance(chart, ChartPanel):
@@ -178,14 +222,12 @@ class JigWindow(QMainWindow):
         """Return the most recently focused ChartPanel, or None."""
         from jig.panels.chart_panel import ChartPanel
 
-        # PyQtAds tracks the focused dock widget
         focused_dw = self.dock_manager.ads_dock_manager.focusedDockWidget()
         if focused_dw is not None:
             w = focused_dw.widget()
             if isinstance(w, ChartPanel):
                 return w
 
-        # Fallback: return the first open chart
         for panel in self.dock_manager.panels:
             if isinstance(panel, ChartPanel):
                 return panel
@@ -195,9 +237,6 @@ class JigWindow(QMainWindow):
 
     def _focus_search(self) -> None:
         self._var_browser.focus_search()
-
-    def _toggle_playback(self) -> None:
-        self.ctx.timeline.toggle_playing()
 
     def _show_quick_plot_dialog(self) -> None:
         from jig.shell.quick_plot_dialog import QuickPlotDialog
