@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from jig.core.timeline import SPEED_TIERS, TimelineController
 
-_SLIDER_RESOLUTION = 10_000  # ticks across the full range
+_SLIDER_RESOLUTION = 10_000
 
 
 def _format_time(t: float) -> str:
@@ -39,12 +39,7 @@ def _make_transport_btn(text: str, tooltip: str) -> QPushButton:
     btn = QPushButton(text)
     btn.setFixedSize(28, 24)
     btn.setToolTip(tooltip)
-    btn.setStyleSheet(
-        "QPushButton { font-size: 13px; border: 1px solid #555; "
-        "border-radius: 3px; background: #2a2a2e; color: #ddd; }"
-        "QPushButton:hover { background: #3a3a3e; }"
-        "QPushButton:pressed { background: #4a4a4e; }"
-    )
+    btn.setObjectName("transportBtn")
     return btn
 
 
@@ -84,7 +79,6 @@ class TimelineWidget(QWidget):
         self._speed_combo.setToolTip("Playback speed (+/-)")
         for tier in SPEED_TIERS:
             self._speed_combo.addItem(f"{tier}x", tier)
-        # Default to 1.0x
         self._speed_combo.setCurrentIndex(SPEED_TIERS.index(1.0))
         self._speed_combo.currentIndexChanged.connect(self._on_speed_selected)
         layout.addWidget(self._speed_combo)
@@ -101,8 +95,11 @@ class TimelineWidget(QWidget):
 
         # -- Time display --
         self._time_label = QLabel("00:00.000 / 00:00.000")
-        self._time_label.setMinimumWidth(160)
-        self._time_label.setStyleSheet("font-family: monospace; font-size: 12px;")
+        self._time_label.setObjectName("timeDisplay")
+        self._time_label.setMinimumWidth(170)
+        self._time_label.setStyleSheet(
+            "font-family: 'Consolas', 'SF Mono', 'Ubuntu Mono', monospace; font-size: 12px;"
+        )
         layout.addWidget(self._time_label)
 
         # -- Connect signals --
@@ -149,14 +146,13 @@ class TimelineWidget(QWidget):
 
     def _on_playback_changed(self, playing: bool) -> None:
         if playing:
-            self._btn_play.setText("\u23f8")  # pause icon
+            self._btn_play.setText("\u23f8")
             self._btn_play.setToolTip("Pause (Space)")
         else:
-            self._btn_play.setText("\u25b6")  # play icon
+            self._btn_play.setText("\u25b6")
             self._btn_play.setToolTip("Play (Space)")
 
     def _on_rate_changed(self, rate: float) -> None:
-        # Sync combo box without triggering signal
         for i in range(self._speed_combo.count()):
             if self._speed_combo.itemData(i) == rate:
                 self._speed_combo.blockSignals(True)

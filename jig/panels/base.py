@@ -26,24 +26,22 @@ class PanelToolbar(QWidget):
 
     def __init__(self, type_icon: str = "", title: str = "", parent: QWidget | None = None):
         super().__init__(parent)
+        self.setObjectName("PanelToolbar")
         self.setFixedHeight(28)
-        self.setStyleSheet(
-            "PanelToolbar { background: #232327; border-bottom: 1px solid #333; }"
-        )
+
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(6, 0, 6, 0)
         self._layout.setSpacing(6)
 
         if type_icon:
             icon_label = QLabel(type_icon)
-            icon_label.setStyleSheet("font-size: 13px;")
+            icon_label.setObjectName("panelIcon")
             self._layout.addWidget(icon_label)
 
         self._title_label = QLabel(title)
-        self._title_label.setStyleSheet("font-size: 11px; color: #aaa;")
+        self._title_label.setObjectName("panelTitle")
         self._layout.addWidget(self._title_label)
 
-        # Stretch goes at the end by default; custom controls insert before it
         self._layout.addStretch()
 
     @property
@@ -60,7 +58,8 @@ class PanelToolbar(QWidget):
 
     def add_separator(self) -> None:
         sep = QLabel("|")
-        sep.setStyleSheet("color: #444; font-size: 11px;")
+        sep.setObjectName("toolbarSep")
+        sep.setStyleSheet("color: #3c3c3c; font-size: 11px;")
         self.add_widget(sep)
 
 
@@ -123,11 +122,7 @@ class PanelBase(QWidget):
         ...
 
     def on_render_tick(self) -> None:
-        """Called at ~60 fps when the render timer is running.
-
-        Override for continuous rendering (e.g. 3D viewport animation).
-        Default does nothing.
-        """
+        """Called at ~60 fps when the render timer is running."""
 
     def get_state(self) -> dict[str, Any]:
         """Return panel state for serialization. Override to persist config."""

@@ -99,7 +99,8 @@ class VariableBrowser(QWidget):
 
         # --- Signal count label ---
         self._count_label = QLabel("")
-        self._count_label.setStyleSheet("font-size: 11px; color: #888; padding: 0 2px;")
+        self._count_label.setObjectName("signalCount")
+        self._count_label.setStyleSheet("font-size: 10px; color: #808080; padding: 0 2px;")
         layout.addWidget(self._count_label)
 
         # --- Tree view ---

@@ -82,12 +82,6 @@ ARM_MJCF = """\
 _JOINT_SERIES = [f"/joint_states/position[{i}]" for i in range(7)]
 
 # Button style shared across toolbar
-_BTN_STYLE = (
-    "QPushButton { font-size: 11px; padding: 2px 6px; border: 1px solid #555; "
-    "border-radius: 3px; background: #2a2a2e; color: #ddd; }"
-    "QPushButton:hover { background: #3a3a3e; }"
-    "QPushButton:checked { background: #3a5a3e; border-color: #5a8; }"
-)
 
 
 @PanelRegistry.register
@@ -113,11 +107,12 @@ class Viewer3DPanel(PanelBase):
         # -- Render area --
         self._image_label = QLabel("3D Viewer")
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setStyleSheet("background: #1a1a2e;")
+        self._image_label.setStyleSheet("background: #161b2e;")
         self.add_content_widget(self._image_label, stretch=1)
 
         self._status_label = QLabel("")
-        self._status_label.setStyleSheet("font-size: 11px; padding: 2px;")
+        self._status_label.setObjectName("panelStatus")
+        self._status_label.setStyleSheet("font-size: 10px; color: #808080; padding: 2px 6px;")
         self.add_content_widget(self._status_label)
 
         # -- Init MuJoCo --
@@ -135,14 +130,12 @@ class Viewer3DPanel(PanelBase):
     def _setup_toolbar(self) -> None:
         # Load model button
         load_btn = QPushButton("Load Model")
-        load_btn.setStyleSheet(_BTN_STYLE)
         load_btn.setToolTip("Load URDF or MJCF model file")
         load_btn.clicked.connect(self._load_model_dialog)
         self.toolbar.add_widget(load_btn)
 
         # Reset camera button
         reset_btn = QPushButton("Reset Camera")
-        reset_btn.setStyleSheet(_BTN_STYLE)
         reset_btn.clicked.connect(self._reset_camera)
         self.toolbar.add_widget(reset_btn)
 
@@ -150,7 +143,6 @@ class Viewer3DPanel(PanelBase):
 
         # Joint topic selector
         topic_label = QLabel("Topic:")
-        topic_label.setStyleSheet("font-size: 11px; color: #aaa;")
         self.toolbar.add_widget(topic_label)
 
         self._topic_combo = QComboBox()
@@ -164,14 +156,12 @@ class Viewer3DPanel(PanelBase):
         # Frames toggle
         self._frames_cb = QCheckBox("Frames")
         self._frames_cb.setChecked(True)
-        self._frames_cb.setStyleSheet("font-size: 11px; color: #aaa;")
         self._frames_cb.toggled.connect(self._on_frames_toggled)
         self.toolbar.add_widget(self._frames_cb)
 
         # Grid toggle
         self._grid_cb = QCheckBox("Grid")
         self._grid_cb.setChecked(True)
-        self._grid_cb.setStyleSheet("font-size: 11px; color: #aaa;")
         self._grid_cb.toggled.connect(self._on_grid_toggled)
         self.toolbar.add_widget(self._grid_cb)
 

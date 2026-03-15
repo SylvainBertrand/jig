@@ -42,7 +42,6 @@ class ImagePanel(PanelBase):
 
         # -- Toolbar controls --
         topic_label = QLabel("Topic:")
-        topic_label.setStyleSheet("font-size: 11px; color: #aaa;")
         self.toolbar.add_widget(topic_label)
 
         self._topic_combo = QComboBox()
@@ -55,14 +54,12 @@ class ImagePanel(PanelBase):
 
         self._fit_cb = QCheckBox("Fit")
         self._fit_cb.setChecked(True)
-        self._fit_cb.setStyleSheet("font-size: 11px; color: #aaa;")
         self._fit_cb.setToolTip("Fit image to panel size")
         self._fit_cb.toggled.connect(self._on_fit_toggled)
         self.toolbar.add_widget(self._fit_cb)
 
         self._info_cb = QCheckBox("Info")
         self._info_cb.setChecked(True)
-        self._info_cb.setStyleSheet("font-size: 11px; color: #aaa;")
         self._info_cb.setToolTip("Show image info overlay")
         self._info_cb.toggled.connect(self._on_info_toggled)
         self.toolbar.add_widget(self._info_cb)
@@ -70,18 +67,18 @@ class ImagePanel(PanelBase):
         # -- Image display --
         self._image_label = QLabel("No image")
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setStyleSheet("background: #1a1a1a;")
+        self._image_label.setStyleSheet("background: #000000;")
 
         # Scroll area for original-size mode
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidget(self._image_label)
         self._scroll_area.setWidgetResizable(True)
-        self._scroll_area.setStyleSheet("background: #1a1a1a; border: none;")
         self.add_content_widget(self._scroll_area, stretch=1)
 
         # Info label at bottom
         self._info_label = QLabel("")
-        self._info_label.setStyleSheet("font-size: 11px; padding: 2px;")
+        self._info_label.setObjectName("panelStatus")
+        self._info_label.setStyleSheet("font-size: 10px; color: #808080; padding: 2px 6px;")
         self.add_content_widget(self._info_label)
 
         # LRU cache for decoded images

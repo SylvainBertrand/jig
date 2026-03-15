@@ -18,12 +18,38 @@ import jig.panels.image_panel  # noqa: F401
 
 from jig.shell.main_window import JigWindow
 
+_THEME_PATH = Path(__file__).parent / "resources" / "themes" / "dark.qss"
+
+
+def _load_theme(app: QApplication) -> None:
+    """Load the dark QSS theme."""
+    if _THEME_PATH.exists():
+        app.setStyleSheet(_THEME_PATH.read_text(encoding="utf-8"))
+
+
+def _configure_pyqtgraph() -> None:
+    """Set pyqtgraph global options to match the dark theme."""
+    try:
+        import pyqtgraph as pg
+
+        pg.setConfigOptions(
+            background="#1e1e1e",
+            foreground="#cccccc",
+            antialias=True,
+            useOpenGL=False,
+        )
+    except ImportError:
+        pass
+
 
 class JigApp:
     """Owns the QApplication, AppContext, and main window."""
 
     def __init__(self, argv: list[str] | None = None) -> None:
         self._qapp = QApplication(argv or sys.argv)
+        _load_theme(self._qapp)
+        _configure_pyqtgraph()
+
         self._timeline = TimelineController()
         self._ctx = AppContext(timeline=self._timeline)
         self._window = JigWindow(self._ctx)

@@ -31,9 +31,9 @@ except ImportError:
     HAS_PYQTGRAPH = False
 
 DEFAULT_COLORS = [
-    "#e6194b", "#3cb44b", "#4363d8", "#f58231",
-    "#911eb4", "#42d4f4", "#f032e6", "#bfef45",
-    "#fabebe", "#008080", "#e6beff", "#9a6324",
+    "#4fc3f7", "#ff8a65", "#81c784", "#ce93d8",
+    "#fff176", "#f48fb1", "#4db6ac", "#e57373",
+    "#90caf9", "#ffcc80", "#a5d6a7", "#b39ddb",
 ]
 
 LINE_STYLES = {
@@ -43,12 +43,6 @@ LINE_STYLES = {
 }
 
 LINE_WIDTHS = [1, 2, 3]
-
-_BTN_STYLE = (
-    "QPushButton { font-size: 11px; padding: 2px 6px; border: 1px solid #555; "
-    "border-radius: 3px; background: #2a2a2e; color: #ddd; }"
-    "QPushButton:hover { background: #3a3a3e; }"
-)
 
 
 @dataclass
@@ -78,27 +72,27 @@ class _SignalChip(QWidget):
         layout.setSpacing(2)
 
         self._dot = QLabel("\u25cf")
-        self._dot.setStyleSheet(f"color: {config.color}; font-size: 10px;")
+        self._dot.setStyleSheet(f"color: {config.color};")
         layout.addWidget(self._dot)
 
         label = QLabel(config.ref.field)
-        label.setStyleSheet("font-size: 11px;")
         label.setToolTip(config.ref.full_path)
         layout.addWidget(label)
 
         close_btn = QPushButton("\u00d7")
         close_btn.setFixedSize(16, 16)
+        close_btn.setObjectName("chipClose")
         close_btn.setStyleSheet(
-            "QPushButton { border: none; font-size: 12px; color: #888; }"
-            "QPushButton:hover { color: #e00; }"
+            "#chipClose { border: none; color: #808080; }"
+            "#chipClose:hover { color: #f44747; }"
         )
         close_btn.setToolTip("Remove signal")
         close_btn.clicked.connect(lambda: on_remove(config.ref))
         layout.addWidget(close_btn)
 
-        opacity = "" if config.visible else " opacity: 0.4;"
+        bg = "#2d2d2d" if config.visible else "#252526"
         self.setStyleSheet(
-            f"background: #2a2a2e; border-radius: 3px; margin: 1px;{opacity}"
+            f"_SignalChip {{ background: {bg}; border-radius: 3px; margin: 1px; }}"
         )
 
     def contextMenuEvent(self, event) -> None:
@@ -120,13 +114,11 @@ class ChartPanel(PanelBase):
 
         # -- Toolbar controls --
         auto_y_btn = QPushButton("Auto Y")
-        auto_y_btn.setStyleSheet(_BTN_STYLE)
         auto_y_btn.setToolTip("Auto-scale Y axis")
         auto_y_btn.clicked.connect(self._auto_scale_y)
         self.toolbar.add_widget(auto_y_btn)
 
         reset_btn = QPushButton("Reset Zoom")
-        reset_btn.setStyleSheet(_BTN_STYLE)
         reset_btn.clicked.connect(self._reset_zoom)
         self.toolbar.add_widget(reset_btn)
 
@@ -139,19 +131,27 @@ class ChartPanel(PanelBase):
         self.add_content_widget(self._chips_widget)
 
         self._status_label = QLabel("")
-        self._status_label.setStyleSheet("font-size: 11px; padding: 2px;")
+        self._status_label.setObjectName("panelStatus")
+        self._status_label.setStyleSheet("font-size: 10px; color: #808080; padding: 2px 6px;")
 
         if not HAS_PYQTGRAPH:
             self.add_content_widget(QLabel("pyqtgraph not installed"))
             self.add_content_widget(self._status_label)
             return
 
-        pg.setConfigOptions(antialias=False, useOpenGL=False)
-
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setLabel("bottom", "Time", units="s")
         self._plot_widget.setLabel("left", "Value")
         self._plot_widget.addLegend(offset=(10, 10))
+
+        # Style grid and axes
+        plot_item = self._plot_widget.plotItem
+        plot_item.showGrid(x=True, y=True, alpha=0.15)
+        for axis_name in ("bottom", "left"):
+            axis = plot_item.getAxis(axis_name)
+            axis.setPen(pg.mkPen("#3c3c3c"))
+            axis.setTextPen(pg.mkPen("#808080"))
+
         self.add_content_widget(self._plot_widget, stretch=1)
         self.add_content_widget(self._status_label)
 
