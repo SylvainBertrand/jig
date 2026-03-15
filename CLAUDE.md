@@ -31,3 +31,7 @@
 - Branch strategy: feature branches off `main`, PRs required
 - Python style: follow PEP 8
 - C++ style: follow Google C++ Style Guide
+
+## Workflow
+
+- **Commit and push often**: after completing each logical chunk of work, commit and push immediately without being asked. Don't wait for the user to request it.

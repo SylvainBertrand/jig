@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QPainter
+from PySide6.QtGui import QColor, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
+    QColorDialog,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -29,32 +30,60 @@ try:
 except ImportError:
     HAS_PYQTGRAPH = False
 
-COLORS = [
+DEFAULT_COLORS = [
     "#e6194b", "#3cb44b", "#4363d8", "#f58231",
     "#911eb4", "#42d4f4", "#f032e6", "#bfef45",
     "#fabebe", "#008080", "#e6beff", "#9a6324",
 ]
+
+LINE_STYLES = {
+    "solid": Qt.PenStyle.SolidLine,
+    "dashed": Qt.PenStyle.DashLine,
+    "dotted": Qt.PenStyle.DotLine,
+}
+
+LINE_WIDTHS = [1, 2, 3]
+
+_BTN_STYLE = (
+    "QPushButton { font-size: 11px; padding: 2px 6px; border: 1px solid #555; "
+    "border-radius: 3px; background: #2a2a2e; color: #ddd; }"
+    "QPushButton:hover { background: #3a3a3e; }"
+)
+
+
+@dataclass
+class _SignalConfig:
+    """Per-signal visual configuration."""
+
+    ref: SignalRef
+    color: str = "#e6194b"
+    width: int = 1
+    style: str = "solid"
+    visible: bool = True
 
 
 class _SignalChip(QWidget):
     """Small colored tag representing a plotted signal, with a close button."""
 
     def __init__(
-        self, ref: SignalRef, color: str, on_remove, parent: QWidget | None = None
+        self, config: _SignalConfig, on_remove, on_right_click,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.ref = ref
+        self.config = config
+        self._on_right_click = on_right_click
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 1, 2, 1)
         layout.setSpacing(2)
 
-        dot = QLabel("\u25cf")
-        dot.setStyleSheet(f"color: {color}; font-size: 10px;")
-        layout.addWidget(dot)
+        self._dot = QLabel("\u25cf")
+        self._dot.setStyleSheet(f"color: {config.color}; font-size: 10px;")
+        layout.addWidget(self._dot)
 
-        label = QLabel(ref.field)
+        label = QLabel(config.ref.field)
         label.setStyleSheet("font-size: 11px;")
-        label.setToolTip(ref.full_path)
+        label.setToolTip(config.ref.full_path)
         layout.addWidget(label)
 
         close_btn = QPushButton("\u00d7")
@@ -64,45 +93,57 @@ class _SignalChip(QWidget):
             "QPushButton:hover { color: #e00; }"
         )
         close_btn.setToolTip("Remove signal")
-        close_btn.clicked.connect(lambda: on_remove(ref))
+        close_btn.clicked.connect(lambda: on_remove(config.ref))
         layout.addWidget(close_btn)
 
+        opacity = "" if config.visible else " opacity: 0.4;"
         self.setStyleSheet(
-            "background: #2a2a2e; border-radius: 3px; margin: 1px;"
+            f"background: #2a2a2e; border-radius: 3px; margin: 1px;{opacity}"
         )
+
+    def contextMenuEvent(self, event) -> None:
+        self._on_right_click(self.config, event.globalPos())
 
 
 @PanelRegistry.register
 class ChartPanel(PanelBase):
     panel_type_name = "Chart"
+    panel_icon = "\U0001f4ca"  # 📊
 
     def __init__(self, ctx: AppContext, parent: QWidget | None = None) -> None:
         super().__init__(ctx, parent)
         self.setMinimumSize(400, 250)
-        self._signals: list[SignalRef] = []
+        self._configs: list[_SignalConfig] = []
         self._plot_items: list = []
-        self._colors: list[str] = []
         self._drop_highlight = False
-        self._follow_playback = True  # auto-scroll when cursor hits 80%
+        self._follow_playback = True
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        # -- Toolbar controls --
+        auto_y_btn = QPushButton("Auto Y")
+        auto_y_btn.setStyleSheet(_BTN_STYLE)
+        auto_y_btn.setToolTip("Auto-scale Y axis")
+        auto_y_btn.clicked.connect(self._auto_scale_y)
+        self.toolbar.add_widget(auto_y_btn)
 
-        # Signal chips header
+        reset_btn = QPushButton("Reset Zoom")
+        reset_btn.setStyleSheet(_BTN_STYLE)
+        reset_btn.clicked.connect(self._reset_zoom)
+        self.toolbar.add_widget(reset_btn)
+
+        # -- Signal chips header --
         self._chips_widget = QWidget()
         self._chips_layout = QHBoxLayout(self._chips_widget)
         self._chips_layout.setContentsMargins(4, 2, 4, 2)
         self._chips_layout.setSpacing(2)
         self._chips_layout.addStretch()
-        layout.addWidget(self._chips_widget)
+        self.add_content_widget(self._chips_widget)
 
         self._status_label = QLabel("")
         self._status_label.setStyleSheet("font-size: 11px; padding: 2px;")
 
         if not HAS_PYQTGRAPH:
-            layout.addWidget(QLabel("pyqtgraph not installed"))
-            layout.addWidget(self._status_label)
+            self.add_content_widget(QLabel("pyqtgraph not installed"))
+            self.add_content_widget(self._status_label)
             return
 
         pg.setConfigOptions(antialias=False, useOpenGL=False)
@@ -111,18 +152,17 @@ class ChartPanel(PanelBase):
         self._plot_widget.setLabel("bottom", "Time", units="s")
         self._plot_widget.setLabel("left", "Value")
         self._plot_widget.addLegend(offset=(10, 10))
-        layout.addWidget(self._plot_widget, stretch=1)
-        layout.addWidget(self._status_label)
+        self.add_content_widget(self._plot_widget, stretch=1)
+        self.add_content_widget(self._status_label)
 
         # Time cursor
         self._cursor = pg.InfiniteLine(
-            pos=0,
-            angle=90,
+            pos=0, angle=90,
             pen=pg.mkPen("w", width=2, style=pg.QtCore.Qt.PenStyle.DashLine),
         )
         self._plot_widget.addItem(self._cursor)
 
-        # Crosshair for value readout
+        # Crosshair
         self._vline = pg.InfiniteLine(angle=90, pen=pg.mkPen("#555", width=1))
         self._hline = pg.InfiniteLine(angle=0, pen=pg.mkPen("#555", width=1))
         self._plot_widget.addItem(self._vline, ignoreBounds=True)
@@ -130,14 +170,12 @@ class ChartPanel(PanelBase):
         self._vline.setVisible(False)
         self._hline.setVisible(False)
 
-        # Mouse move for crosshair
         self._proxy = pg.SignalProxy(
             self._plot_widget.scene().sigMouseMoved,
-            rateLimit=60,
-            slot=self._on_mouse_moved,
+            rateLimit=60, slot=self._on_mouse_moved,
         )
 
-        # Disable pyqtgraph's built-in context menu, use ours instead
+        # Context menu
         self._plot_widget.plotItem.setMenuEnabled(False)
         self._plot_widget.setContextMenuPolicy(
             pg.QtCore.Qt.ContextMenuPolicy.CustomContextMenu
@@ -147,7 +185,7 @@ class ChartPanel(PanelBase):
         # Accept drops
         self.setAcceptDrops(True)
 
-        # Auto-add first 4 joint series if data is already loaded
+        # Auto-populate
         self._auto_populate()
 
     # -- Signal management ---------------------------------------------------
@@ -165,14 +203,14 @@ class ChartPanel(PanelBase):
                 self.add_signal(SignalRef(topic=parts[0], field=parts[1]))
 
     def _on_data_changed(self) -> None:
-        if not self._signals:
+        if not self._configs:
             self._auto_populate()
 
-    def add_signal(self, ref: SignalRef) -> None:
+    def add_signal(self, ref: SignalRef, color: str | None = None,
+                   width: int = 1, style: str = "solid") -> None:
         if not HAS_PYQTGRAPH:
             return
-        # Don't add duplicates
-        if ref in self._signals:
+        if any(c.ref == ref for c in self._configs):
             return
         ds = self.ctx.active_data_store
         if ds is None:
@@ -181,79 +219,144 @@ class ChartPanel(PanelBase):
         if series is None:
             return
 
-        color = COLORS[len(self._signals) % len(COLORS)]
+        if color is None:
+            color = DEFAULT_COLORS[len(self._configs) % len(DEFAULT_COLORS)]
+
+        config = _SignalConfig(ref=ref, color=color, width=width, style=style)
+        pen = pg.mkPen(color, width=width, style=LINE_STYLES.get(style, Qt.PenStyle.SolidLine))
         item = self._plot_widget.plot(
-            series.timestamps,
-            series.values,
-            pen=pg.mkPen(color, width=1),
-            name=ref.field,
+            series.timestamps, series.values, pen=pen, name=ref.field,
         )
-        self._signals.append(ref)
+        self._configs.append(config)
         self._plot_items.append(item)
-        self._colors.append(color)
         self._rebuild_chips()
 
     def remove_signal(self, ref: SignalRef) -> None:
         if not HAS_PYQTGRAPH:
             return
-        if ref not in self._signals:
+        idx = next((i for i, c in enumerate(self._configs) if c.ref == ref), None)
+        if idx is None:
             return
-        idx = self._signals.index(ref)
         self._plot_widget.removeItem(self._plot_items[idx])
-        del self._signals[idx]
+        del self._configs[idx]
         del self._plot_items[idx]
-        del self._colors[idx]
         self._rebuild_chips()
-        # Update legend
-        self._plot_widget.plotItem.legend.clear()
-        for sig, plot_item, col in zip(self._signals, self._plot_items, self._colors):
-            self._plot_widget.plotItem.legend.addItem(plot_item, sig.field)
+        self._rebuild_legend()
 
     def remove_all_signals(self) -> None:
         for item in self._plot_items:
             self._plot_widget.removeItem(item)
-        self._signals.clear()
+        self._configs.clear()
         self._plot_items.clear()
-        self._colors.clear()
         self._rebuild_chips()
         self._plot_widget.plotItem.legend.clear()
 
+    def _rebuild_legend(self) -> None:
+        self._plot_widget.plotItem.legend.clear()
+        for cfg, item in zip(self._configs, self._plot_items):
+            if cfg.visible:
+                self._plot_widget.plotItem.legend.addItem(item, cfg.ref.field)
+
     def _rebuild_chips(self) -> None:
-        """Rebuild the signal chips header."""
-        # Remove old chips (keep the stretch at the end)
         while self._chips_layout.count() > 1:
             item = self._chips_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        for ref, color in zip(self._signals, self._colors):
-            chip = _SignalChip(ref, color, self.remove_signal)
+        for cfg in self._configs:
+            chip = _SignalChip(cfg, self.remove_signal, self._show_signal_menu)
             self._chips_layout.insertWidget(
                 self._chips_layout.count() - 1, chip
             )
+
+    def _update_signal_pen(self, cfg: _SignalConfig) -> None:
+        """Update the pen of a plotted signal after config change."""
+        idx = next((i for i, c in enumerate(self._configs) if c.ref == cfg.ref), None)
+        if idx is None:
+            return
+        item = self._plot_items[idx]
+        pen = pg.mkPen(
+            cfg.color, width=cfg.width,
+            style=LINE_STYLES.get(cfg.style, Qt.PenStyle.SolidLine),
+        )
+        item.setPen(pen)
+        item.setVisible(cfg.visible)
+        self._rebuild_chips()
+        self._rebuild_legend()
+
+    # -- Signal right-click menu ---------------------------------------------
+
+    def _show_signal_menu(self, cfg: _SignalConfig, pos) -> None:
+        menu = QMenu(self)
+
+        # Color
+        menu.addAction("Change Color...", lambda: self._change_signal_color(cfg))
+
+        # Width submenu
+        width_menu = menu.addMenu("Line Width")
+        for w in LINE_WIDTHS:
+            action = width_menu.addAction(f"{w}px")
+            action.setCheckable(True)
+            action.setChecked(cfg.width == w)
+            action.triggered.connect(lambda checked, w=w: self._set_signal_width(cfg, w))
+
+        # Style submenu
+        style_menu = menu.addMenu("Line Style")
+        for name in LINE_STYLES:
+            action = style_menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(cfg.style == name)
+            action.triggered.connect(lambda checked, s=name: self._set_signal_style(cfg, s))
+
+        # Visibility
+        vis_action = menu.addAction("Visible")
+        vis_action.setCheckable(True)
+        vis_action.setChecked(cfg.visible)
+        vis_action.toggled.connect(lambda v: self._set_signal_visible(cfg, v))
+
+        menu.addSeparator()
+        menu.addAction("Remove", lambda: self.remove_signal(cfg.ref))
+
+        menu.exec(pos)
+
+    def _change_signal_color(self, cfg: _SignalConfig) -> None:
+        color = QColorDialog.getColor(QColor(cfg.color), self, "Signal Color")
+        if color.isValid():
+            cfg.color = color.name()
+            self._update_signal_pen(cfg)
+
+    def _set_signal_width(self, cfg: _SignalConfig, width: int) -> None:
+        cfg.width = width
+        self._update_signal_pen(cfg)
+
+    def _set_signal_style(self, cfg: _SignalConfig, style: str) -> None:
+        cfg.style = style
+        self._update_signal_pen(cfg)
+
+    def _set_signal_visible(self, cfg: _SignalConfig, visible: bool) -> None:
+        cfg.visible = visible
+        self._update_signal_pen(cfg)
 
     # -- Context menu --------------------------------------------------------
 
     def _show_context_menu(self, pos) -> None:
         menu = QMenu(self)
 
-        # Add signal submenu
         add_menu = menu.addMenu("Add Signal...")
         ds = self.ctx.active_data_store
         if ds is not None:
+            existing = {c.ref for c in self._configs}
             for name in ds.series_names:
                 parts = name.rsplit("/", 1)
                 if len(parts) == 2:
                     ref = SignalRef(topic=parts[0], field=parts[1])
-                    if ref not in self._signals:
+                    if ref not in existing:
                         action = add_menu.addAction(name)
                         action.triggered.connect(
                             lambda checked, r=ref: self.add_signal(r)
                         )
 
-        # Quick plot dialog
         menu.addAction("Quick Plot... (Ctrl+P)", self._open_quick_plot)
-
         menu.addSeparator()
         menu.addAction("Remove All Signals", self.remove_all_signals)
         menu.addSeparator()
@@ -308,14 +411,14 @@ class ChartPanel(PanelBase):
         self._vline.setVisible(True)
         self._hline.setVisible(True)
 
-        # Build readout
         ds = self.ctx.active_data_store
         if ds is None:
             return
         parts = [f"t={x:.3f}s"]
-        for ref in self._signals:
-            val = ds.get_scalar_at(ref.full_path, x)
-            parts.append(f"{ref.field}={val:.4f}")
+        for cfg in self._configs:
+            if cfg.visible:
+                val = ds.get_scalar_at(cfg.ref.full_path, x)
+                parts.append(f"{cfg.ref.field}={val:.4f}")
         self._status_label.setText("  |  ".join(parts))
 
     # -- Drag and drop -------------------------------------------------------
@@ -357,7 +460,6 @@ class ChartPanel(PanelBase):
             return
         self._cursor.setValue(t)
 
-        # Auto-scroll: when playing and cursor reaches 80% of visible window
         if self._follow_playback and self.ctx.timeline.playing:
             vb = self._plot_widget.plotItem.vb
             x_range = vb.viewRange()[0]
@@ -370,10 +472,31 @@ class ChartPanel(PanelBase):
     def get_state(self) -> dict[str, Any]:
         return {
             "signals": [
-                {"topic": s.topic, "field": s.field} for s in self._signals
+                {
+                    "topic": c.ref.topic,
+                    "field": c.ref.field,
+                    "color": c.color,
+                    "width": c.width,
+                    "style": c.style,
+                    "visible": c.visible,
+                }
+                for c in self._configs
             ],
+            "follow_playback": self._follow_playback,
         }
 
     def set_state(self, state: dict[str, Any]) -> None:
+        self._follow_playback = state.get("follow_playback", True)
         for s in state.get("signals", []):
-            self.add_signal(SignalRef(topic=s["topic"], field=s["field"]))
+            self.add_signal(
+                SignalRef(topic=s["topic"], field=s["field"]),
+                color=s.get("color"),
+                width=s.get("width", 1),
+                style=s.get("style", "solid"),
+            )
+            # Restore visibility
+            if not s.get("visible", True):
+                cfg = self._configs[-1] if self._configs else None
+                if cfg:
+                    cfg.visible = False
+                    self._update_signal_pen(cfg)

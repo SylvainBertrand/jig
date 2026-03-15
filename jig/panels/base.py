@@ -5,16 +5,70 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
 
 from jig.core.app_context import AppContext
+
+
+class PanelToolbar(QWidget):
+    """Slim toolbar at the top of every panel.
+
+    Provides a standard layout:
+      [type_icon] [title_label] [... custom controls ...] [stretch]
+    Subclasses add their own controls via ``add_widget()`` / ``add_stretch()``.
+    """
+
+    def __init__(self, type_icon: str = "", title: str = "", parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setFixedHeight(28)
+        self.setStyleSheet(
+            "PanelToolbar { background: #232327; border-bottom: 1px solid #333; }"
+        )
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(6, 0, 6, 0)
+        self._layout.setSpacing(6)
+
+        if type_icon:
+            icon_label = QLabel(type_icon)
+            icon_label.setStyleSheet("font-size: 13px;")
+            self._layout.addWidget(icon_label)
+
+        self._title_label = QLabel(title)
+        self._title_label.setStyleSheet("font-size: 11px; color: #aaa;")
+        self._layout.addWidget(self._title_label)
+
+        # Stretch goes at the end by default; custom controls insert before it
+        self._layout.addStretch()
+
+    @property
+    def title(self) -> str:
+        return self._title_label.text()
+
+    @title.setter
+    def title(self, text: str) -> None:
+        self._title_label.setText(text)
+
+    def add_widget(self, widget: QWidget) -> None:
+        """Insert a widget before the trailing stretch."""
+        self._layout.insertWidget(self._layout.count() - 1, widget)
+
+    def add_separator(self) -> None:
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #444; font-size: 11px;")
+        self.add_widget(sep)
 
 
 class PanelBase(QWidget):
     """Base class every panel must implement.
 
     Provides:
+    - A shared ``PanelToolbar`` at the top (access via ``self.toolbar``)
     - Access to AppContext (timeline, sessions, data)
     - A per-panel render timer (~60 fps) for continuous updates
     - Connection to TimelineController.time_changed for immediate scrub response
@@ -23,10 +77,31 @@ class PanelBase(QWidget):
 
     #: Human-readable name shown in menus. Override in subclass.
     panel_type_name: str = "Panel"
+    #: Icon shown in the toolbar. Override in subclass.
+    panel_icon: str = ""
 
     def __init__(self, ctx: AppContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.ctx = ctx
+
+        # Root layout — toolbar + content area
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
+
+        # Panel toolbar (shared across all panel types)
+        self.toolbar = PanelToolbar(
+            type_icon=self.panel_icon,
+            title=self.panel_type_name,
+        )
+        self._root_layout.addWidget(self.toolbar)
+
+        # Content area — subclasses add their widgets here
+        self._content = QWidget()
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        self._root_layout.addWidget(self._content, stretch=1)
 
         # Per-panel render timer (~60 fps)
         self._render_timer = QTimer(self)
@@ -35,6 +110,10 @@ class PanelBase(QWidget):
 
         # Connect to timeline for immediate scrub response
         self.ctx.timeline.time_changed.connect(self.on_time_changed)
+
+    def add_content_widget(self, widget: QWidget, stretch: int = 0) -> None:
+        """Add a widget to the panel's content area (below the toolbar)."""
+        self._content_layout.addWidget(widget, stretch=stretch)
 
     # -- Subclass interface --------------------------------------------------
 
